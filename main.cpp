@@ -98,22 +98,26 @@ class HelloTringleApplication
 			appInfo.engineVersion = VK_MAKE_VERSION(1,0,0);
 			appInfo.apiVersion = VK_API_VERSION_1_0;
 
+			//extensions required by glfw
 			uint32_t glfwExtensionCount = 0;
 			const char** glfwExtensions;
 			glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
+			//all extentions supported
 			uint32_t extentionCount = 0;
 			vkEnumerateInstanceExtensionProperties(nullptr, &extentionCount, nullptr);
 			std::vector<VkExtensionProperties> extensions(extentionCount);
 			vkEnumerateInstanceExtensionProperties(nullptr, &extentionCount, extensions.data());
 
 			#if (DEBUG_VK)
+			//list all available extensions
 			std::cout << "availble extensions: " << std::endl;
 			for(const auto& extension : extensions)
 			{
 				std::cout << "\t" << extension.extensionName << std::endl;
 			}
 
+			//check if all the glfw extensions are supported
 			bool all_extensions_found = true;
 			for(int i = 0; i < glfwExtensionCount; i++)
 			{
