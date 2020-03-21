@@ -1,6 +1,6 @@
 platform ?= -DPLATFORM=LINUX
 platform_flags = $(platform)
-debug_flags ?= -DDEBUG -D_GLIBCXX_DEBUG #-DTRACK_MEM_ALLOC -DPRINT_MEM_ALLOC
+debug_flags ?= -DDEBUG -D_GLIBCXX_DEBUG -DDEBUG_VK #-DTRACK_MEM_ALLOC -DPRINT_MEM_ALLOC
 
 VULKAN_SDK_PATH = /vulkan/1.2.131.2/x86_64
 vulkan_compile_flags = -I$(VULKAN_SDK_PATH)/include

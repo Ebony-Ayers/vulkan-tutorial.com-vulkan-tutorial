@@ -5,7 +5,7 @@
 #include "pch.h"
 
 //external dependancies
-#define GLWF_INCLUDE_VULKAN
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 //indernal dependancies
@@ -49,11 +49,12 @@ class HelloTringleApplication
 			initWindow();
 			initVulkan();
 			mainLoop();
-			clearnup();
+			cleanup();
 		}
 	
 	private:
 		GLFWwindow* window;
+		VkInstance instance;
 
 		void initWindow()
 		{
@@ -67,7 +68,7 @@ class HelloTringleApplication
 
 		void initVulkan()
 		{
-
+			createInstance();
 		}
 
 		void mainLoop()
@@ -78,11 +79,74 @@ class HelloTringleApplication
 			}
 		}
 
-		void clearnup()
+		void cleanup()
 		{
+			vkDestroyInstance(instance, nullptr);
+
 			glfwDestroyWindow(window);
 
 			glfwTerminate();
+		}
+
+		void createInstance()
+		{
+			VkApplicationInfo appInfo = {};
+			appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+			appInfo.pApplicationName = "Hello Trangle";
+			appInfo.applicationVersion = VK_MAKE_VERSION(1,0,0);
+			appInfo.pEngineName = "No Engine";
+			appInfo.engineVersion = VK_MAKE_VERSION(1,0,0);
+			appInfo.apiVersion = VK_API_VERSION_1_0;
+
+			uint32_t glfwExtensionCount = 0;
+			const char** glfwExtensions;
+			glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+			uint32_t extentionCount = 0;
+			vkEnumerateInstanceExtensionProperties(nullptr, &extentionCount, nullptr);
+			std::vector<VkExtensionProperties> extensions(extentionCount);
+			vkEnumerateInstanceExtensionProperties(nullptr, &extentionCount, extensions.data());
+
+			#if (DEBUG_VK)
+			std::cout << "availble extensions: " << std::endl;
+			for(const auto& extension : extensions)
+			{
+				std::cout << "\t" << extension.extensionName << std::endl;
+			}
+
+			bool all_extensions_found = true;
+			for(int i = 0; i < glfwExtensionCount; i++)
+			{
+				bool extension_found = false;
+				for(const auto& extension : extensions)
+				{
+					if(std::strcmp(glfwExtensions[i], extension.extensionName))
+					{
+						extension_found = true;
+					}
+				}
+				if(!extension_found)
+				{
+					all_extensions_found = false;
+				}
+			}
+			if(all_extensions_found)
+			{
+				std::cout << "All extentions required for GLFW were found" << std::endl;
+			}
+			#endif
+
+			VkInstanceCreateInfo createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+			createInfo.pApplicationInfo = &appInfo;
+			createInfo.enabledExtensionCount = glfwExtensionCount;
+			createInfo.ppEnabledExtensionNames = glfwExtensions;
+			createInfo.enabledExtensionCount = 0;
+			
+			if(vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to create instance!");
+			}
 		}
 };
 
