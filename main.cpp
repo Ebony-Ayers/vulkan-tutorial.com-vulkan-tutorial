@@ -65,7 +65,6 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
 {
 	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestoryDebugUtilsMessengerEXT");
-	std::cout << "func:" << (uint64_t)func << std::endl;
 	if (func != nullptr)
 	{
 		return func(instance, debugMessenger, pAllocator);
@@ -87,6 +86,7 @@ class HelloTringleApplication
 		GLFWwindow* window;
 		VkInstance instance;
 		VkDebugUtilsMessengerEXT debugMessenger;
+		VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 
 		void initWindow()
 		{
@@ -102,6 +102,7 @@ class HelloTringleApplication
 		{
 			createInstance();
 			setupDebugMessenger();
+			pickPysicalDevice();
 		}
 
 		void mainLoop()
@@ -264,11 +265,11 @@ class HelloTringleApplication
 
 		static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
 		{
-			//if(messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
-			//{
-			//	std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-			//}
-			std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+			if(messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+			{
+				std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+			}
+			//std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 			return VK_FALSE;
 		}
 
@@ -300,6 +301,132 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to set up debug messenger!");
 			}
+		}
+
+		void pickPysicalDevice()
+		{
+			uint32_t deviceCount = 0;
+			vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+			if(deviceCount == 0)
+			{
+				throw std::runtime_error("failed to find GPUs with Vulkan support!");
+			}
+
+			std::vector<VkPhysicalDevice> devices(deviceCount);
+			vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+			std::multimap<int, VkPhysicalDevice> canditates;
+
+			for(const auto& device : devices)
+			{
+				if(!isDeviceSuitable(device))
+				{
+					continue;
+				}
+				
+				int score = rateDeviceSuitability(device);
+				canditates.insert(std::make_pair(score, device));
+			}
+
+			if(canditates.rbegin()->first > 0)
+			{
+				physicalDevice = canditates.rbegin()->second;
+			}
+			else
+			{
+				throw std::runtime_error("failed to find a suitable GPU!");
+			}
+
+			if(physicalDevice == VK_NULL_HANDLE)
+			{
+				throw std::runtime_error("failed to find a suitable GPU!");
+			}
+		}
+
+		bool isDeviceSuitable(VkPhysicalDevice device)
+		{
+			QueueFamilyIndicies indicies = findQueueFamilies(device);
+
+			return indicies.isComplete();
+		}
+
+		int rateDeviceSuitability(VkPhysicalDevice device)
+		{
+			int score = 0;
+
+			VkPhysicalDeviceProperties deviceProperties;
+			vkGetPhysicalDeviceProperties(device, &deviceProperties);
+			VkPhysicalDeviceFeatures deviceFeatures;
+			vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+
+			std::cout << "Physical device \"" << deviceProperties.deviceName << "\":\n";
+			std::cout << "\t  deviceType: ";
+			if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_OTHER) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_OTHER"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_CPU"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_BEGIN_RANGE) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_BEGIN_RANGE"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_END_RANGE) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_END_RANGE"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM"; }
+			std::cout << "\n";
+			std::cout << "\t  driverVersion: " << deviceProperties.driverVersion << "\n";
+			std::cout << "\t  GeometryShader: " << ((deviceFeatures.geometryShader) ? "true" : "false") << "\n";
+
+			if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+			{
+				score += 1000;
+			}
+
+			score += deviceProperties.limits.maxImageDimension2D;
+
+			if(!deviceFeatures.geometryShader)
+			{
+				return 0;
+			}
+
+			return score;
+		}
+
+		struct QueueFamilyIndicies
+		{
+			std::optional<uint32_t> graphicsFamily;
+
+			bool isComplete()
+			{
+				return graphicsFamily.has_value();
+			}
+		};
+
+		QueueFamilyIndicies findQueueFamilies(VkPhysicalDevice device)
+		{
+			QueueFamilyIndicies indices;
+
+			uint32_t queueFamilyCount = 0;
+			vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+			std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+			vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+			int i = 0;
+			for(const auto& queueFamily : queueFamilies)
+			{
+				if(indices.isComplete())
+				{
+					break;
+				}
+				
+				if(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+				{
+					indices.graphicsFamily = i;
+				}
+				i++;
+			}
+
+			return indices;
 		}
 };
 
