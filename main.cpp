@@ -41,7 +41,7 @@ void operator delete(void* memory, size_t size)
 const int WIDTH = 800;
 const int HEIGHT = 600;
 
-const std::vector<const char*> validationLayers = { "VK_LAYER_LUNARG_standard_validation" };
+const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 #if (DEBUG)
 const bool enableValidationLayers = true;
 #else
@@ -86,9 +86,11 @@ class HelloTringleApplication
 		GLFWwindow* window;
 		VkInstance instance;
 		VkDebugUtilsMessengerEXT debugMessenger;
+		VkSurfaceKHR surface;
 		VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 		VkDevice device;
 		VkQueue graphicsQueue;
+		VkQueue presentQueue;
 
 		void initWindow()
 		{
@@ -98,14 +100,17 @@ class HelloTringleApplication
 			glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 			window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+			std::cout << "Initialised window\n";
 		}
 
 		void initVulkan()
 		{
 			createInstance();
 			setupDebugMessenger();
+			createSurface();
 			pickPysicalDevice();
 			createLogicalDevice();
+			std::cout << "Initialised vulkan\n";
 		}
 
 		void mainLoop()
@@ -125,6 +130,7 @@ class HelloTringleApplication
 				DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 			}
 			
+			vkDestroySurfaceKHR(instance, surface, nullptr);
 			vkDestroyInstance(instance, nullptr);
 
 			glfwDestroyWindow(window);
@@ -172,6 +178,7 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to create instance!");
 			}
+			std::cout << "Created instance\n";
 		}
 
 		//checks if the globally required layers are available
@@ -307,6 +314,16 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to set up debug messenger!");
 			}
+			std::cout << "Setup debug messenger\n";
+		}
+
+		void createSurface()
+		{
+			if(glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to create window surface!");
+			}
+			std::cout << "Created surface\n";
 		}
 
 		void pickPysicalDevice()
@@ -348,6 +365,7 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to find a suitable GPU!");
 			}
+			std::cout << "Picked physical device\n";
 		}
 
 		bool isDeviceSuitable(VkPhysicalDevice device)
@@ -400,10 +418,11 @@ class HelloTringleApplication
 		struct QueueFamilyIndicies
 		{
 			std::optional<uint32_t> graphicsFamily;
+			std::optional<uint32_t> presentFamily;
 
 			bool isComplete()
 			{
-				return graphicsFamily.has_value();
+				return graphicsFamily.has_value() && presentFamily.has_value();
 			}
 		};
 
@@ -416,7 +435,6 @@ class HelloTringleApplication
 
 			std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
 			vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
 			int i = 0;
 			for(const auto& queueFamily : queueFamilies)
 			{
@@ -424,14 +442,18 @@ class HelloTringleApplication
 				{
 					break;
 				}
-				
+				VkBool32 presentSupport = false;
+				vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 				if(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
 				{
 					indices.graphicsFamily = i;
 				}
+				if(presentSupport)
+				{
+					indices.presentFamily = i;
+				}
 				i++;
 			}
-
 			return indices;
 		}
 
@@ -439,19 +461,24 @@ class HelloTringleApplication
 		{
 			QueueFamilyIndicies indicies = findQueueFamilies(physicalDevice);
 
-			VkDeviceQueueCreateInfo queueCreateInfo = {};
-			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-			queueCreateInfo.queueFamilyIndex = indicies.graphicsFamily.value();
-			queueCreateInfo.queueCount = 1;
+			std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+			std::set<uint32_t> uniqueQueueFamilies = {indicies.graphicsFamily.value(), indicies.presentFamily.value()};
 			float queuePriority = 1.0f;
-			queueCreateInfo.pQueuePriorities = &queuePriority;
+			for(uint32_t queueFamily : uniqueQueueFamilies)
+			{
+				VkDeviceQueueCreateInfo queueCreateInfo = {};
+				queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+				queueCreateInfo.queueFamilyIndex = queueFamily;
+				queueCreateInfo.queueCount = 1;
+				queueCreateInfo.pQueuePriorities = &queuePriority;
 
+				queueCreateInfos.push_back(queueCreateInfo);
+			}
 			VkPhysicalDeviceFeatures deviceFeatures = {};
-
 			VkDeviceCreateInfo createInfo = {};
 			createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-			createInfo.pQueueCreateInfos = &queueCreateInfo;
-			createInfo.queueCreateInfoCount = 1;
+			createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+			createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
 			createInfo.pEnabledFeatures = &deviceFeatures;
 
@@ -466,13 +493,13 @@ class HelloTringleApplication
 			{
 				createInfo.enabledLayerCount = 0;
 			}
-
 			if(vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
 			{
 				throw std::runtime_error("failed to create logical device!");
 			}
-
 			vkGetDeviceQueue(device, indicies.graphicsFamily.value(), 0, &graphicsQueue);
+			vkGetDeviceQueue(device, indicies.presentFamily.value(), 0, &presentQueue);
+			std::cout << "Created logical device\n";
 		}
 };
 
