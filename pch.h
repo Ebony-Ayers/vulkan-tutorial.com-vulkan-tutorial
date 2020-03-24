@@ -22,5 +22,6 @@
 #include <stdexcept>
 
 #include <cstdlib>
+#include <cstdint>
 
 #include <optional>
