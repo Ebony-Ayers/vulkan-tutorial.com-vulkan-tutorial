@@ -20,7 +20,7 @@ static uint32_t number_of_frees = 0;
 void* operator new(size_t size)
 {
 	#if (PRINT_MEM_ALLOC)
-	std::cout << number_of_allocations << " Allocating " << size << "bytes, total memory allocated = " << total_memory_allocated + size << " bytes\n";
+	if(debug_log) std::cout << number_of_allocations << " Allocating " << size << "bytes, total memory allocated = " << total_memory_allocated + size << " bytes\n";
 	#endif
 	total_memory_allocated += size;
 	number_of_allocations++;
@@ -30,7 +30,7 @@ void* operator new(size_t size)
 void operator delete(void* memory, size_t size)
 {
 	#if (PRINT_MEM_ALLOC)
-	std::cout << number_of_frees << " Freeing " << size << "bytes, new total memory allocated = " << total_memory_allocated - size << " bytes\n";
+	if(debug_log) std::cout << number_of_frees << " Freeing " << size << "bytes, new total memory allocated = " << total_memory_allocated - size << " bytes\n";
 	#endif
 	total_memory_allocated -= size;
 	number_of_frees++;
@@ -38,10 +38,13 @@ void operator delete(void* memory, size_t size)
 }
 #endif
 
+const bool debug_log = false;
+
 const int WIDTH = 800;
 const int HEIGHT = 600;
 
 const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
+
 #if (DEBUG)
 const bool enableValidationLayers = true;
 #else
@@ -64,11 +67,15 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
 
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
 {
-	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestoryDebugUtilsMessengerEXT");
+	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
 	if (func != nullptr)
 	{
 		return func(instance, debugMessenger, pAllocator);
     }
+	else
+	{
+		std::cout << "Error: could not find debug messenger destroyer\n";
+	}
 }
 
 struct QueueFamilyIndicies
@@ -127,7 +134,7 @@ class HelloTringleApplication
 			glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 			window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
-			std::cout << "> Initialised window\n";
+			if(debug_log) std::cout << "> Initialised window\n";
 		}
 
 		void initVulkan()
@@ -139,22 +146,22 @@ class HelloTringleApplication
 			createLogicalDevice();
 			createSwapChain();
 			createImageViews();
-			std::cout << "> Initialised vulkan\n";
+			if(debug_log) std::cout << "> Initialised vulkan\n";
 		}
 
 		void mainLoop()
 		{
-			std::cout << "> Entering mainloop\n";
+			if(debug_log) std::cout << "> Entering mainloop\n";
 			while(!glfwWindowShouldClose(window))
 			{
 				glfwPollEvents();
 			}
-			std::cout << "> Exiting mainloop\n";
+			if(debug_log) std::cout << "> Exiting mainloop\n";
 		}
 
 		void cleanup()
 		{
-			std::cout << "> Starting cleanup\n";
+			if(debug_log) std::cout << "> Starting cleanup\n";
 			for (auto imageView : swapChainImageViews)
 			{
 				vkDestroyImageView(device, imageView, nullptr);
@@ -174,7 +181,7 @@ class HelloTringleApplication
 			glfwDestroyWindow(window);
 
 			glfwTerminate();
-			std::cout << "> Ending cleanup\n";
+			if(debug_log) std::cout << "> Ending cleanup\n";
 		}
 
 		void createInstance()
@@ -220,7 +227,7 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to create instance!");
 			}
-			std::cout << "> Created instance\n";
+			if(debug_log) std::cout << "> Created instance\n";
 		}
 
 		void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
@@ -251,7 +258,7 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to set up debug messenger!");
 			}
-			std::cout << "> Setup debug messenger\n";
+			if(debug_log) std::cout << "> Setup debug messenger\n";
 		}
 
 		void createSurface()
@@ -260,7 +267,7 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to create window surface!");
 			}
-			std::cout << "> Created surface\n";
+			if(debug_log) std::cout << "> Created surface\n";
 		}
 
 		void pickPysicalDevice()
@@ -302,7 +309,7 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to find a suitable GPU!");
 			}
-			std::cout << "> Picked physical device\n";
+			if(debug_log) std::cout << "> Picked physical device\n";
 		}
 
 		void createLogicalDevice()
@@ -352,7 +359,7 @@ class HelloTringleApplication
 			
 			vkGetDeviceQueue(device, indicies.graphicsFamily.value(), 0, &graphicsQueue);
 			vkGetDeviceQueue(device, indicies.presentFamily.value(), 0, &presentQueue);
-			std::cout << "> Created logical device\n";
+			if(debug_log) std::cout << "> Created logical device\n";
 		}
 
 		void createSwapChain()
@@ -412,7 +419,7 @@ class HelloTringleApplication
 			swapChainImageFormat = surfaceFormat.format;
 			swapChainExtent = extent;
 
-			std::cout << "> Created swap chain\n";
+			if(debug_log) std::cout << "> Created swap chain\n";
 		}
 
 		void createImageViews()
@@ -451,7 +458,7 @@ class HelloTringleApplication
 				//if(availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 				if(availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 				{
-					std::cout << ">> found optimal swap surface format\n";
+					if(debug_log) std::cout << ">> found optimal swap surface format\n";
 					return availableFormat;
 				}
 			}
@@ -465,7 +472,7 @@ class HelloTringleApplication
 			{
 				if(availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
 				{
-					std::cout << ">> found optimal swap present mode\n";
+					if(debug_log) std::cout << ">> found optimal swap present mode\n";
 					return availablePresentMode;
 				}
 			}
@@ -477,7 +484,7 @@ class HelloTringleApplication
 		{
 			if(capabilities.currentExtent.width != UINT32_MAX)
 			{
-				std::cout << "swap extent = (" << capabilities.currentExtent.width << ", " << capabilities.currentExtent.height << ")\n";
+				if(debug_log) std::cout << ">> swap extent = (" << capabilities.currentExtent.width << ", " << capabilities.currentExtent.height << ")\n";
 				return capabilities.currentExtent;
 			}
 			else
@@ -487,7 +494,7 @@ class HelloTringleApplication
 				actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
 				actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.width));
 
-				std::cout << "swap extent = (" << actualExtent.width << ", " << actualExtent.height << ")\n";
+				if(debug_log) std::cout << ">> swap extent = (" << actualExtent.width << ", " << actualExtent.height << ")\n";
 				return actualExtent;
 			}
 		}
@@ -541,23 +548,23 @@ class HelloTringleApplication
 			vkGetPhysicalDeviceProperties(device, &deviceProperties);
 			VkPhysicalDeviceFeatures deviceFeatures;
 			vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
-			std::cout << "Physical device \"" << deviceProperties.deviceName << "\":\n";
-			std::cout << "\t  deviceType: ";
-			if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_OTHER) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_OTHER"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_CPU"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_BEGIN_RANGE) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_BEGIN_RANGE"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_END_RANGE) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_END_RANGE"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE"; }
-			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM) { std::cout << "VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM"; }
-			std::cout << "\n";
-			std::cout << "\t  driverVersion: " << deviceProperties.driverVersion << "\n";
-			std::cout << "\t  GeometryShader: " << ((deviceFeatures.geometryShader) ? "true" : "false") << "\n";
-
+			
+			if(debug_log) std::cout << "Physical device \"" << deviceProperties.deviceName << "\":\n";
+			if(debug_log) std::cout << "\t  deviceType: ";
+			if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_OTHER) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_OTHER"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_CPU"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_BEGIN_RANGE) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_BEGIN_RANGE"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_END_RANGE) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_END_RANGE"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE"; }
+			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM"; }
+			if(debug_log) std::cout << "\n";
+			if(debug_log) std::cout << "\t  driverVersion: " << deviceProperties.driverVersion << "\n";
+			if(debug_log) std::cout << "\t  GeometryShader: " << ((deviceFeatures.geometryShader) ? "true" : "false") << "\n";
+			
 			if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
 			{
 				score += 1000;
@@ -644,7 +651,7 @@ class HelloTringleApplication
 			vkEnumerateInstanceExtensionProperties(nullptr, &available_extension_count, nullptr);
 			std::vector<VkExtensionProperties> available_extensions(available_extension_count);
 			vkEnumerateInstanceExtensionProperties(nullptr, &available_extension_count, available_extensions.data());
-			std::cout << "available extensions:" << std::endl;
+			if(debug_log) std::cout << "available extensions:" << std::endl;
 			for(const auto& extension : available_extensions) {
 				bool in_use = false;
 				for (int i = 0; i < extensions.size(); i++)
@@ -656,11 +663,11 @@ class HelloTringleApplication
 				}
 				if(in_use)
 				{
-					std::cout << "\t* " << extension.extensionName << std::endl;
+					if(debug_log) std::cout << "\t* " << extension.extensionName << std::endl;
 				}
 				else
 				{
-					std::cout << "\t  " << extension.extensionName << std::endl;
+					if(debug_log) std::cout << "\t  " << extension.extensionName << std::endl;
 				}
 			}
 			#endif
@@ -677,7 +684,7 @@ class HelloTringleApplication
 			vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 			
 			#if (DEBUG_VK)
-			std::cout << "available layers:\n";
+			if(debug_log) std::cout << "available layers:\n";
 			for(const auto& layerProperties : availableLayers)
 			{
 				bool in_use = false;
@@ -691,11 +698,11 @@ class HelloTringleApplication
 				}
 				if(in_use)
 				{
-					std::cout << "\t* " << layerProperties.layerName << std::endl;
+					if(debug_log) std::cout << "\t* " << layerProperties.layerName << std::endl;
 				}
 				else
 				{
-					std::cout << "\t  " << layerProperties.layerName << std::endl;
+					if(debug_log) std::cout << "\t  " << layerProperties.layerName << std::endl;
 				}
 			}
 			#endif
@@ -736,7 +743,7 @@ class HelloTringleApplication
 int main(int argc, char* argv[])
 {
 	#if (DEBUG)
-	std::cout << "Running in debug mode\ngcc version: " << __GNUC__ << "." << __GNUC_MINOR__ << "." << __GNUC_PATCHLEVEL__ << "\n";
+	if(debug_log) std::cout << "Running in debug mode\ngcc version: " << __GNUC__ << "." << __GNUC_MINOR__ << "." << __GNUC_PATCHLEVEL__ << "\n";
 	#endif
 
 	HelloTringleApplication app;
@@ -754,9 +761,9 @@ int main(int argc, char* argv[])
 	
 
 	#if (DEBUG)
-	std::cout << "Exiting application\n";
+	if(debug_log) std::cout << "Exiting application\n";
 	#if (PRINT_MEM_ALLOC)
-	std::cout << total_memory_allocated << " bytes of memory still allocated\n" << number_of_allocations - number_of_frees << " allocations left unfreed\n";
+	if(debug_log) std::cout << total_memory_allocated << " bytes of memory still allocated\n" << number_of_allocations - number_of_frees << " allocations left unfreed\n";
 	#endif
 	#endif
 	return EXIT_SUCCESS;
