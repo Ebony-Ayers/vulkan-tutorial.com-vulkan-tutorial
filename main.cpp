@@ -38,7 +38,7 @@ void operator delete(void* memory, size_t size)
 }
 #endif
 
-const bool debug_log = false;
+const bool debug_log = true;
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
@@ -146,6 +146,7 @@ class HelloTringleApplication
 			createLogicalDevice();
 			createSwapChain();
 			createImageViews();
+			createGraphicsPipeline();
 			if(debug_log) std::cout << "> Initialised vulkan\n";
 		}
 
@@ -450,6 +451,11 @@ class HelloTringleApplication
 			}
 		}
 
+		void createGraphicsPipeline()
+		{
+			return;
+		}
+
 		VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
 		{
 			for(const auto& availableFormat : availableFormats)
@@ -737,7 +743,7 @@ class HelloTringleApplication
 			}
 			//std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 			return VK_FALSE;
-		}	
+		}
 };
 
 int main(int argc, char* argv[])
