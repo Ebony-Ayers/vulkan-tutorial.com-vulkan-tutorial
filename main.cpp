@@ -148,6 +148,8 @@ class HelloTringleApplication
 		VkPipelineLayout pipelineLayout;
 		VkPipeline graphicsPipeline;
 
+		std::vector<VkFramebuffer> swapchainFramebuffers;
+
 		void initWindow()
 		{
 			glfwInit();
@@ -170,6 +172,7 @@ class HelloTringleApplication
 			createImageViews();
 			createRenderPass();
 			createGraphicsPipeline();
+			createFramebuffers();
 			if(debug_log) std::cout << "> Initialised vulkan\n";
 		}
 
@@ -186,6 +189,11 @@ class HelloTringleApplication
 		void cleanup()
 		{
 			if(debug_log) std::cout << "> Starting cleanup\n";
+			
+			for(auto framebuffer : swapchainFramebuffers)
+			{
+				vkDestroyFramebuffer(device, framebuffer, nullptr);
+			}
 			
 			vkDestroyPipeline(device, graphicsPipeline, nullptr);
 			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -649,6 +657,30 @@ class HelloTringleApplication
 				throw std::runtime_error("failed to create render pass!");
 			}
 			if(debug_log) std::cout << "> Created render pass\n";
+		}
+
+		void createFramebuffers()
+		{
+			swapchainFramebuffers.resize(swapChainImageViews.size());
+
+			for(size_t i = 0; i < swapChainImageViews.size(); i++)
+			{
+				VkImageView attachments[] = {swapChainImageViews[i]};
+
+				VkFramebufferCreateInfo framebufferInfo = {};
+				framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+				framebufferInfo.renderPass = renderPass;
+				framebufferInfo.attachmentCount = 1;
+				framebufferInfo.pAttachments = attachments;
+				framebufferInfo.width = swapChainExtent.width;
+				framebufferInfo.height = swapChainExtent.height;
+				framebufferInfo.layers = 1;
+
+				if(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapchainFramebuffers[i]) != VK_SUCCESS)
+				{
+					throw std::runtime_error("failed to create framebuffer!");
+				}
+			}
 		}
 
 		VkShaderModule createShaderModule(const std::vector<char>& code)
