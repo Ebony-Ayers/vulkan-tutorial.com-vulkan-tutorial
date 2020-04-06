@@ -144,6 +144,7 @@ class HelloTringleApplication
 		VkExtent2D swapChainExtent;
 		std::vector<VkImageView> swapChainImageViews;
 
+		VkRenderPass renderPass;
 		VkPipelineLayout pipelineLayout;
 
 		void initWindow()
@@ -166,6 +167,7 @@ class HelloTringleApplication
 			createLogicalDevice();
 			createSwapChain();
 			createImageViews();
+			createRenderPass();
 			createGraphicsPipeline();
 			if(debug_log) std::cout << "> Initialised vulkan\n";
 		}
@@ -185,6 +187,7 @@ class HelloTringleApplication
 			if(debug_log) std::cout << "> Starting cleanup\n";
 			
 			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+			vkDestroyRenderPass(device, renderPass, nullptr);
 			
 			for (auto imageView : swapChainImageViews)
 			{
@@ -472,6 +475,7 @@ class HelloTringleApplication
 					throw std::runtime_error("failed to create image views!");
 				}
 			}
+			if(debug_log) std::cout << "> Created image views\n";
 		}
 
 		void createGraphicsPipeline()
@@ -492,7 +496,6 @@ class HelloTringleApplication
 			fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 			fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 			fragShaderStageInfo.module = fragShaderModule;
-			fragShaderStageInfo.pName = "main";
 
 			VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
@@ -586,6 +589,40 @@ class HelloTringleApplication
 			vkDestroyShaderModule(device, fragShaderModule, nullptr);
 
 			if(debug_log) std::cout << "> Created graphics pipeline\n";
+		}
+
+		void createRenderPass()
+		{
+			VkAttachmentDescription colorAttachment = {};
+			colorAttachment.format = swapChainImageFormat;
+			colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+			colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+			VkAttachmentReference colorAttachmentRef = {};
+			colorAttachmentRef.attachment = 0;
+			colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+			VkSubpassDescription subpass = {};
+			subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+			subpass.colorAttachmentCount = 1;
+			subpass.pColorAttachments = &colorAttachmentRef;
+			VkRenderPassCreateInfo renderPassInfo = {};
+			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+			renderPassInfo.attachmentCount = 1;
+			renderPassInfo.pAttachments = &colorAttachment;
+			renderPassInfo.subpassCount = 1;
+			renderPassInfo.pSubpasses = &subpass;
+
+			if(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_FALSE)
+			{
+				throw std::runtime_error("failed to create render pass!");
+			}
+			if(debug_log) std::cout << "> Created render pass\n";
 		}
 
 		VkShaderModule createShaderModule(const std::vector<char>& code)
