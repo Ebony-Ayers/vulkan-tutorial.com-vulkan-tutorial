@@ -161,15 +161,27 @@ class HelloTringleApplication
 		std::vector<VkFence> imagesInFlight;
 		size_t currentFrame = 0;
 
+		bool framebufferResized = false;
+
 		void initWindow()
 		{
 			glfwInit();
 			
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-			glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+			//glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 			window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+			glfwSetWindowUserPointer(window, this);
+			glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+
 			if(debug_log) std::cout << "> Initialised window\n";
+		}
+
+		static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
+		{
+			if(debug_log) std::cout << "-----------------resize-----------------\n";
+			auto app = reinterpret_cast<HelloTringleApplication*>(glfwGetWindowUserPointer(window));
+			app->framebufferResized = true;
 		}
 
 		void initVulkan()
@@ -207,6 +219,8 @@ class HelloTringleApplication
 		{
 			if(debug_log) std::cout << "> Starting cleanup\n";
 			
+			cleanupSwapChain();
+
 			for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 			{
 				vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
@@ -216,21 +230,6 @@ class HelloTringleApplication
 
 			vkDestroyCommandPool(device, commandPool, nullptr);
 			
-			for(auto framebuffer : swapchainFramebuffers)
-			{
-				vkDestroyFramebuffer(device, framebuffer, nullptr);
-			}
-			
-			vkDestroyPipeline(device, graphicsPipeline, nullptr);
-			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-			vkDestroyRenderPass(device, renderPass, nullptr);
-			
-			for (auto imageView : swapChainImageViews)
-			{
-				vkDestroyImageView(device, imageView, nullptr);
-			}
-			
-			vkDestroySwapchainKHR(device, swapChain, nullptr);
 			vkDestroyDevice(device, nullptr);
 			
 			if(enableValidationLayers)
@@ -245,6 +244,41 @@ class HelloTringleApplication
 
 			glfwTerminate();
 			if(debug_log) std::cout << "> Ending cleanup\n";
+		}
+
+		void cleanupSwapChain()
+		{
+			for(auto framebuffer : swapchainFramebuffers)
+			{
+				vkDestroyFramebuffer(device, framebuffer, nullptr);
+			}
+
+			vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+			
+			vkDestroyPipeline(device, graphicsPipeline, nullptr);
+			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+			vkDestroyRenderPass(device, renderPass, nullptr);
+			
+			for (auto imageView : swapChainImageViews)
+			{
+				vkDestroyImageView(device, imageView, nullptr);
+			}
+
+			vkDestroySwapchainKHR(device, swapChain, nullptr);
+		}
+
+		void recreateSwapChain()
+		{
+			vkDeviceWaitIdle(device);
+
+			cleanupSwapChain();
+
+			createSwapChain();
+			createImageViews();
+			createRenderPass();
+			createGraphicsPipeline();
+			createFramebuffers();
+			createCommandBuffers();
 		}
 
 		void createInstance()
@@ -804,22 +838,31 @@ class HelloTringleApplication
 			fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
 			for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+			{
+			if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+				vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+				vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS)
 				{
-				if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-					vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-					vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS)
-					{
-						throw std::runtime_error("failed to create synchronization objects for a frame!");
-					}
+					throw std::runtime_error("failed to create synchronization objects for a frame!");
 				}
 			}
+		}
 
 		void drawFrame()
 		{
 			vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 			
 			uint32_t imageIndex;
-			vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+			VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+			if(result == VK_ERROR_OUT_OF_DATE_KHR)
+			{
+				recreateSwapChain();
+				return;
+			}
+			else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+			{
+				throw std::runtime_error("failed to acquire swap chain image!");
+			}
 
 			if(imagesInFlight[imageIndex] != VK_NULL_HANDLE)
 			{
@@ -863,7 +906,16 @@ class HelloTringleApplication
 			presentInfo.pImageIndices = &imageIndex;
 			presentInfo.pResults = nullptr; //optional
 
-			vkQueuePresentKHR(presentQueue, &presentInfo);
+			result = vkQueuePresentKHR(presentQueue, &presentInfo);
+			if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
+			{
+				framebufferResized = false;
+				recreateSwapChain();
+			}
+			else if(result != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to present swap chain image!");
+			}
 
 			currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 		}
@@ -923,7 +975,10 @@ class HelloTringleApplication
 			}
 			else
 			{
-				VkExtent2D actualExtent = {WIDTH, HEIGHT};
+				int width, height;
+				glfwGetFramebufferSize(window, &width, &height);
+
+				VkExtent2D actualExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
 
 				actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
 				actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.width));
