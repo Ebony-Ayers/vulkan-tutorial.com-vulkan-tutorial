@@ -149,9 +149,16 @@ struct Vertex
 	}
 };
 
+//const std::vector<Vertex> vertecies = 
+//{
+//	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+//	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+//	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+//};
+
 const std::vector<Vertex> vertecies = 
 {
-	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
 	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
 	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
 };
@@ -203,6 +210,9 @@ class HelloTringleApplication
 
 		bool framebufferResized = false;
 
+		VkBuffer vertexBuffer;
+		VkDeviceMemory vertexBufferMemory;
+
 		void initWindow()
 		{
 			glfwInit();
@@ -237,6 +247,7 @@ class HelloTringleApplication
 			createGraphicsPipeline();
 			createFramebuffers();
 			createCommandPool();
+			createVertexBuffer();
 			createCommandBuffers();
 			createSyncObjects();
 			if(debug_log) std::cout << "> Initialised vulkan\n";
@@ -260,6 +271,9 @@ class HelloTringleApplication
 			if(debug_log) std::cout << "> Starting cleanup\n";
 			
 			cleanupSwapChain();
+
+			vkDestroyBuffer(device, vertexBuffer, nullptr);
+			vkFreeMemory(device, vertexBufferMemory, nullptr);
 
 			for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 			{
@@ -663,7 +677,7 @@ class HelloTringleApplication
 			multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 			multisampling.minSampleShading = 1.0f; //optional
 			multisampling.pSampleMask = nullptr; //optional
-			multisampling.alphaToCoverageEnable = VK_FALSE; //optional;
+			multisampling.alphaToCoverageEnable = VK_FALSE; //optional
 			multisampling.alphaToOneEnable = VK_FALSE; //optional
 
 			VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
@@ -855,6 +869,11 @@ class HelloTringleApplication
 
 				vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 				vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+				VkBuffer vertexBuffers[] = {vertexBuffer};
+				VkDeviceSize offsets[] = {0};
+				vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
+
 				vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
 				vkCmdEndRenderPass(commandBuffers[i]);
 
@@ -889,6 +908,40 @@ class HelloTringleApplication
 					throw std::runtime_error("failed to create synchronization objects for a frame!");
 				}
 			}
+		}
+
+		void createVertexBuffer()
+		{
+			VkBufferCreateInfo buffereInfo = {};
+			buffereInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			buffereInfo.size = sizeof(vertecies[0]) * vertecies.size();
+			buffereInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+			buffereInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			if(vkCreateBuffer(device, &buffereInfo, nullptr, &vertexBuffer) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to create vertex buffer!");
+			}
+
+			VkMemoryRequirements memRequirements;
+			vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+
+			VkMemoryAllocateInfo allocInfo = {};
+			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+			allocInfo.allocationSize = memRequirements.size;
+			allocInfo.memoryTypeIndex = findMemeoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+			if(vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to allocate vertex buffer memory!");
+			}
+
+			vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+
+			void* data;
+			vkMapMemory(device, vertexBufferMemory, 0, buffereInfo.size, 0, &data);
+			memcpy(data, vertecies.data(), (size_t) buffereInfo.size);
+			vkUnmapMemory(device, vertexBufferMemory);
 		}
 
 		void drawFrame()
@@ -961,6 +1014,22 @@ class HelloTringleApplication
 			}
 
 			currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		}
+
+		uint32_t findMemeoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+		{
+			VkPhysicalDeviceMemoryProperties memProperties;
+			vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+			for(uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
+			{
+				if((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+				{
+					return i;
+				}
+			}
+
+			throw std::runtime_error("failed to find suitable memory type!");
 		}
 
 		VkShaderModule createShaderModule(const std::vector<char>& code)
