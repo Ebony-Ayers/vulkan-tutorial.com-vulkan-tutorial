@@ -149,19 +149,15 @@ struct Vertex
 	}
 };
 
-//const std::vector<Vertex> vertecies = 
-//{
-//	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-//	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-//	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-//};
-
 const std::vector<Vertex> vertecies = 
 {
-	{{ 0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-	{{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}}
 };
+
+const std::vector<uint16_t> indicies = { 0, 1, 2, 2, 3, 0 };
 
 class HelloTringleApplication
 {
@@ -192,14 +188,19 @@ class HelloTringleApplication
 		VkFormat swapChainImageFormat;
 		VkExtent2D swapChainExtent;
 		std::vector<VkImageView> swapChainImageViews;
+		std::vector<VkFramebuffer> swapchainFramebuffers;
 
 		VkRenderPass renderPass;
 		VkPipelineLayout pipelineLayout;
 		VkPipeline graphicsPipeline;
 
-		std::vector<VkFramebuffer> swapchainFramebuffers;
+		VkBuffer vertexBuffer;
+		VkDeviceMemory vertexBufferMemory;
+		VkBuffer indexBuffer;
+		VkDeviceMemory indexBufferMemeory;
 
 		VkCommandPool commandPool;
+		
 		std::vector<VkCommandBuffer> commandBuffers;
 
 		std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -209,9 +210,6 @@ class HelloTringleApplication
 		size_t currentFrame = 0;
 
 		bool framebufferResized = false;
-
-		VkBuffer vertexBuffer;
-		VkDeviceMemory vertexBufferMemory;
 
 		void initWindow()
 		{
@@ -248,6 +246,7 @@ class HelloTringleApplication
 			createFramebuffers();
 			createCommandPool();
 			createVertexBuffer();
+			createIndexBuffer();
 			createCommandBuffers();
 			createSyncObjects();
 			if(debug_log) std::cout << "> Initialised vulkan\n";
@@ -271,6 +270,9 @@ class HelloTringleApplication
 			if(debug_log) std::cout << "> Starting cleanup\n";
 			
 			cleanupSwapChain();
+
+			vkDestroyBuffer(device, indexBuffer, nullptr);
+			vkFreeMemory(device, indexBufferMemeory, nullptr);
 
 			vkDestroyBuffer(device, vertexBuffer, nullptr);
 			vkFreeMemory(device, vertexBufferMemory, nullptr);
@@ -874,7 +876,11 @@ class HelloTringleApplication
 				VkDeviceSize offsets[] = {0};
 				vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
 
-				vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+				vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+				//vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+				vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indicies.size()), 1, 0, 0, 0);
+				
 				vkCmdEndRenderPass(commandBuffers[i]);
 
 				if(vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS)
@@ -931,6 +937,28 @@ class HelloTringleApplication
 			vkDestroyBuffer(device, stagingBuffer, nullptr);
 			vkFreeMemory(device, stagingbufferMemory, nullptr);
 			if(debug_log) std::cout << "> Created vertex buffers\n";
+		}
+
+		void createIndexBuffer()
+		{
+			VkDeviceSize bufferSize = sizeof(indicies[0]) * indicies.size();
+
+			VkBuffer stagingBuffer;
+			VkDeviceMemory stagingbufferMemory;
+			createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingbufferMemory);
+
+			void* data;
+			vkMapMemory(device, stagingbufferMemory, 0, bufferSize, 0, &data);
+			memcpy(data, indicies.data(), (size_t) bufferSize);
+			vkUnmapMemory(device, stagingbufferMemory);
+
+			createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemeory);
+
+			copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+
+			vkDestroyBuffer(device, stagingBuffer, nullptr);
+			vkFreeMemory(device, stagingbufferMemory, nullptr);
+			if(debug_log) std::cout << "> Created index buffers\n";
 		}
 
 		void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
