@@ -158,9 +158,9 @@ struct Vertex
 
 const std::vector<Vertex> vertecies = 
 {
-	{{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{ 0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+	{{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
 };
 
 class HelloTringleApplication
@@ -908,40 +908,58 @@ class HelloTringleApplication
 					throw std::runtime_error("failed to create synchronization objects for a frame!");
 				}
 			}
+			if(debug_log) std::cout << "> Created sync objects\n";
 		}
 
 		void createVertexBuffer()
 		{
-			VkBufferCreateInfo buffereInfo = {};
-			buffereInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-			buffereInfo.size = sizeof(vertecies[0]) * vertecies.size();
-			buffereInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-			buffereInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			VkDeviceSize bufferSize = sizeof(vertecies[0]) * vertecies.size();
+			
+			VkBuffer stagingBuffer;
+			VkDeviceMemory stagingbufferMemory;
+			createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingbufferMemory);
 
-			if(vkCreateBuffer(device, &buffereInfo, nullptr, &vertexBuffer) != VK_SUCCESS)
+			void* data;
+			vkMapMemory(device, stagingbufferMemory, 0, bufferSize, 0, &data);
+			memcpy(data, vertecies.data(), (size_t) bufferSize);
+			vkUnmapMemory(device, stagingbufferMemory);
+
+			createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+
+			copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+
+			vkDestroyBuffer(device, stagingBuffer, nullptr);
+			vkFreeMemory(device, stagingbufferMemory, nullptr);
+			if(debug_log) std::cout << "> Created vertex buffers\n";
+		}
+
+		void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
+		{
+			VkBufferCreateInfo bufferInfo = {};
+			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			bufferInfo.size = size;
+			bufferInfo.usage = usage;
+			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			if(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
 			{
-				throw std::runtime_error("failed to create vertex buffer!");
+				throw std::runtime_error("failed to create buffer!");
 			}
 
 			VkMemoryRequirements memRequirements;
-			vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+			vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
 
 			VkMemoryAllocateInfo allocInfo = {};
 			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 			allocInfo.allocationSize = memRequirements.size;
-			allocInfo.memoryTypeIndex = findMemeoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			allocInfo.memoryTypeIndex = findMemeoryType(memRequirements.memoryTypeBits, properties);
 
-			if(vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS)
+			if(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
 			{
 				throw std::runtime_error("failed to allocate vertex buffer memory!");
 			}
 
-			vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
-
-			void* data;
-			vkMapMemory(device, vertexBufferMemory, 0, buffereInfo.size, 0, &data);
-			memcpy(data, vertecies.data(), (size_t) buffereInfo.size);
-			vkUnmapMemory(device, vertexBufferMemory);
+			vkBindBufferMemory(device, buffer, bufferMemory, 0);
 		}
 
 		void drawFrame()
@@ -1030,6 +1048,43 @@ class HelloTringleApplication
 			}
 
 			throw std::runtime_error("failed to find suitable memory type!");
+		}
+
+		void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+		{
+			VkCommandBufferAllocateInfo allocInfo = {};
+			allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+			allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+			allocInfo.commandPool = commandPool;
+			allocInfo.commandBufferCount = 1;
+
+			VkCommandBuffer commandBuffer;
+			vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+
+			VkCommandBufferBeginInfo beginInfo = {};
+			beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+			beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+			vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+			VkBufferCopy copyRegion = {};
+			copyRegion.srcOffset = 0; //optional
+			copyRegion.dstOffset = 0; //optional
+			copyRegion.size = size;
+
+			vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+			vkEndCommandBuffer(commandBuffer);
+
+			VkSubmitInfo submitInfo = {};
+			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+			submitInfo.commandBufferCount = 1;
+			submitInfo.pCommandBuffers = &commandBuffer;
+
+			vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+			vkQueueWaitIdle(graphicsQueue);
+
+			vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 		}
 
 		VkShaderModule createShaderModule(const std::vector<char>& code)
