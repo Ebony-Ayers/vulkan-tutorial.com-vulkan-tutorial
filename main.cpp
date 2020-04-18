@@ -7,7 +7,9 @@
 //external dependancies
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 //indernal dependancies
 
@@ -159,6 +161,13 @@ const std::vector<Vertex> vertecies =
 
 const std::vector<uint16_t> indicies = { 0, 1, 2, 2, 3, 0 };
 
+struct UniformBufferObject
+{
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 proj;
+};
+
 class HelloTringleApplication
 {
 	public:
@@ -191,6 +200,7 @@ class HelloTringleApplication
 		std::vector<VkFramebuffer> swapchainFramebuffers;
 
 		VkRenderPass renderPass;
+		VkDescriptorSetLayout descriptorSetLayout;
 		VkPipelineLayout pipelineLayout;
 		VkPipeline graphicsPipeline;
 
@@ -198,6 +208,9 @@ class HelloTringleApplication
 		VkDeviceMemory vertexBufferMemory;
 		VkBuffer indexBuffer;
 		VkDeviceMemory indexBufferMemeory;
+
+		std::vector<VkBuffer> uniformBuffers;
+		std::vector<VkDeviceMemory> uniformBufferMemory;
 
 		VkCommandPool commandPool;
 		
@@ -242,10 +255,12 @@ class HelloTringleApplication
 			createSwapChain();
 			createImageViews();
 			createRenderPass();
+			createDescriptorSetLayout();
 			createGraphicsPipeline();
 			createFramebuffers();
 			createCommandPool();
 			createVertexBuffer();
+			createUniformBuffers();
 			createIndexBuffer();
 			createCommandBuffers();
 			createSyncObjects();
@@ -270,6 +285,8 @@ class HelloTringleApplication
 			if(debug_log) std::cout << "> Starting cleanup\n";
 			
 			cleanupSwapChain();
+
+			vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
 			vkDestroyBuffer(device, indexBuffer, nullptr);
 			vkFreeMemory(device, indexBufferMemeory, nullptr);
@@ -321,6 +338,12 @@ class HelloTringleApplication
 			}
 
 			vkDestroySwapchainKHR(device, swapChain, nullptr);
+
+			for(size_t i = 0; i < swapChainImages.size(); i++)
+			{
+				vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+				vkFreeMemory(device, uniformBufferMemory[i], nullptr);
+			}
 		}
 
 		void recreateSwapChain()
@@ -334,6 +357,7 @@ class HelloTringleApplication
 			createRenderPass();
 			createGraphicsPipeline();
 			createFramebuffers();
+			createUniformBuffers();
 			createCommandBuffers();
 		}
 
@@ -705,8 +729,8 @@ class HelloTringleApplication
 
 			VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
 			pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-			pipelineLayoutInfo.setLayoutCount = 0; //optional
-			pipelineLayoutInfo.pSetLayouts = nullptr; //optional
+			pipelineLayoutInfo.setLayoutCount = 1;
+			pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
 			pipelineLayoutInfo.pushConstantRangeCount = 0; //optional
 			pipelineLayoutInfo.pPushConstantRanges = nullptr; //optional
 
@@ -961,33 +985,37 @@ class HelloTringleApplication
 			if(debug_log) std::cout << "> Created index buffers\n";
 		}
 
-		void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
+		void createDescriptorSetLayout()
 		{
-			VkBufferCreateInfo bufferInfo = {};
-			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-			bufferInfo.size = size;
-			bufferInfo.usage = usage;
-			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+			uboLayoutBinding.binding = 0;
+			uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			uboLayoutBinding.descriptorCount = 1;
+			uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+			uboLayoutBinding.pImmutableSamplers = nullptr; //optional
+			
+			VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+			layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+			layoutInfo.bindingCount = 1;
+			layoutInfo.pBindings = &uboLayoutBinding;
 
-			if(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
+			if(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
 			{
-				throw std::runtime_error("failed to create buffer!");
+				throw std::runtime_error("failed to create descriptor layout!");
 			}
+		}
 
-			VkMemoryRequirements memRequirements;
-			vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+		void createUniformBuffers()
+		{
+			VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
-			VkMemoryAllocateInfo allocInfo = {};
-			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-			allocInfo.allocationSize = memRequirements.size;
-			allocInfo.memoryTypeIndex = findMemeoryType(memRequirements.memoryTypeBits, properties);
+			uniformBuffers.resize(swapChainImages.size());
+			uniformBufferMemory.resize(swapChainImages.size());
 
-			if(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
+			for(size_t i = 0; i < swapChainImages.size(); i++)
 			{
-				throw std::runtime_error("failed to allocate vertex buffer memory!");
+				createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBufferMemory[i]);
 			}
-
-			vkBindBufferMemory(device, buffer, bufferMemory, 0);
 		}
 
 		void drawFrame()
@@ -1012,6 +1040,8 @@ class HelloTringleApplication
 			}
 			imagesInFlight[imageIndex] = inFlightFences[currentFrame];
 
+			updateUniformBuffers(imageIndex);
+			
 			VkSubmitInfo submitInfo = {};
 			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -1058,8 +1088,55 @@ class HelloTringleApplication
 			{
 				throw std::runtime_error("failed to present swap chain image!");
 			}
-
 			currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		}
+
+		void updateUniformBuffers(uint32_t currentImage)
+		{
+			static auto startTime = std::chrono::high_resolution_clock::now();
+
+			auto currentTime = std::chrono::high_resolution_clock::now();
+			float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+			UniformBufferObject ubo = {};
+			ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+			ubo.proj[1][1] *= -1;
+
+			void* data;
+			vkMapMemory(device, uniformBufferMemory[currentImage], 0, sizeof(ubo), 0, &data);
+			memcpy(data, &ubo, sizeof(ubo));
+			vkUnmapMemory(device, uniformBufferMemory[currentImage]);
+		}
+
+		void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
+		{
+			VkBufferCreateInfo bufferInfo = {};
+			bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+			bufferInfo.size = size;
+			bufferInfo.usage = usage;
+			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+			if(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to create buffer!");
+			}
+
+			VkMemoryRequirements memRequirements;
+			vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+
+			VkMemoryAllocateInfo allocInfo = {};
+			allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+			allocInfo.allocationSize = memRequirements.size;
+			allocInfo.memoryTypeIndex = findMemeoryType(memRequirements.memoryTypeBits, properties);
+
+			if(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to allocate vertex buffer memory!");
+			}
+
+			vkBindBufferMemory(device, buffer, bufferMemory, 0);
 		}
 
 		uint32_t findMemeoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
