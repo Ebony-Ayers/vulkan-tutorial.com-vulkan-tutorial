@@ -231,6 +231,8 @@ class HelloTringleApplication
 
 		VkImage textureImage;
 		VkDeviceMemory textureImageMemory;
+		VkImageView textureImageView;
+		VkSampler textureSampler;
 
 		void initWindow()
 		{
@@ -268,6 +270,8 @@ class HelloTringleApplication
 			createFramebuffers();
 			createCommandPool();
 			createTextureImage();
+			createTextureImageView();
+			createTextureSampler();
 			createVertexBuffer();
 			createUniformBuffers();
 			createDescriptorPool();
@@ -297,6 +301,8 @@ class HelloTringleApplication
 			
 			cleanupSwapChain();
 
+			vkDestroySampler(device, textureSampler, nullptr);
+			vkDestroyImageView(device, textureImageView, nullptr);
 			vkDestroyImage(device, textureImage, nullptr);
 			vkFreeMemory(device, textureImageMemory, nullptr);
 
@@ -623,25 +629,7 @@ class HelloTringleApplication
 
 			for(size_t i = 0; i < swapChainImages.size(); i++)
 			{
-				VkImageViewCreateInfo createInfo = {};
-				createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-				createInfo.image = swapChainImages[i];
-				createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-				createInfo.format = swapChainImageFormat;
-				createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-				createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-				createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-				createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-				createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-				createInfo.subresourceRange.baseMipLevel = 0;
-				createInfo.subresourceRange.levelCount = 1;
-				createInfo.subresourceRange.baseArrayLayer = 0;
-				createInfo.subresourceRange.layerCount = 1;
-
-				if(vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS)
-				{
-					throw std::runtime_error("failed to create image views!");
-				}
+				swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat);
 			}
 			if(debug_log) std::cout << "> Created image views\n";
 		}
@@ -1105,7 +1093,7 @@ class HelloTringleApplication
 			VkBuffer stagingBuffer;
 			VkDeviceMemory stagingBufferMemory;
 			createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-						
+
 			void* data;
 			vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
 			memcpy(data, pixles, static_cast<size_t>(imageSize));
@@ -1122,6 +1110,41 @@ class HelloTringleApplication
 
 			vkDestroyBuffer(device, stagingBuffer, nullptr);
 			vkFreeMemory(device, stagingBufferMemory, nullptr);
+		}
+
+		void createTextureImageView()
+		{
+			textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_UNORM);
+		}
+
+		void createTextureSampler()
+		{
+			VkSamplerCreateInfo samplerInfo = {};
+			samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+			samplerInfo.magFilter = VK_FILTER_LINEAR;
+			samplerInfo.minFilter = VK_FILTER_LINEAR;
+			samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			//16x anisotropic filering
+			//samplerInfo.anisotropyEnable = VK_TRUE;
+			//samplerInfo.maxAnisotropy = 16;
+			//no anisoropic filtering
+			samplerInfo.anisotropyEnable = VK_FALSE;
+			samplerInfo.maxAnisotropy = 1;
+			samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+			samplerInfo.unnormalizedCoordinates = VK_FALSE;
+			samplerInfo.compareEnable = VK_FALSE;
+			samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+			samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+			samplerInfo.mipLodBias = 0.0f;
+			samplerInfo.minLod = 0.0f;
+			samplerInfo.maxLod = 0.0f;
+
+			if(vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to create texure sampler!");
+			}
 		}
 
 		void drawFrame()
@@ -1195,6 +1218,27 @@ class HelloTringleApplication
 				throw std::runtime_error("failed to present swap chain image!");
 			}
 			currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+		}
+
+		VkImageView createImageView(VkImage image, VkFormat format)
+		{
+			VkImageViewCreateInfo viewInfo = {};
+			viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			viewInfo.image = image;
+			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			viewInfo.format = format;
+			viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			viewInfo.subresourceRange.baseMipLevel = 0;
+			viewInfo.subresourceRange.levelCount = 1;
+			viewInfo.subresourceRange.baseArrayLayer = 0;
+			viewInfo.subresourceRange.layerCount = 1;
+
+			VkImageView imageView;
+			if(vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS)
+			{
+				throw std::runtime_error("failed to create texture image view");
+			}
+			return imageView;
 		}
 
 		void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
@@ -1409,8 +1453,9 @@ class HelloTringleApplication
 			copyRegion.srcOffset = 0; //optional
 			copyRegion.dstOffset = 0; //optional
 			copyRegion.size = size;
-			vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
 
+			vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+			
 			endSingleTimeCommands(commandBuffer);
 		}
 
@@ -1533,7 +1578,7 @@ class HelloTringleApplication
 			vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 			
 			if(debug_log) std::cout << "Physical device \"" << deviceProperties.deviceName << "\":\n";
-			if(debug_log) std::cout << "  deviceType: ";
+			if(debug_log) std::cout << "\t  deviceType: ";
 			if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_OTHER) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_OTHER"; }
 			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU"; }
 			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU"; }
@@ -1545,8 +1590,8 @@ class HelloTringleApplication
 			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_RANGE_SIZE"; }
 			else if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM) { if(debug_log) std::cout << "VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM"; }
 			if(debug_log) std::cout << "\n";
-			if(debug_log) std::cout << "  driverVersion: " << deviceProperties.driverVersion << "\n";
-			if(debug_log) std::cout << "  GeometryShader: " << ((deviceFeatures.geometryShader) ? "true" : "false") << "\n";
+			if(debug_log) std::cout << "\t  driverVersion: " << deviceProperties.driverVersion << "\n";
+			if(debug_log) std::cout << "\t  GeometryShader: " << ((deviceFeatures.geometryShader) ? "true" : "false") << "\n";
 			
 			if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
 			{
@@ -1646,11 +1691,11 @@ class HelloTringleApplication
 				}
 				if(in_use)
 				{
-					if(debug_log) std::cout << "* " << extension.extensionName << std::endl;
+					if(debug_log) std::cout << "\t* " << extension.extensionName << std::endl;
 				}
 				else
 				{
-					if(debug_log) std::cout << "  " << extension.extensionName << std::endl;
+					if(debug_log) std::cout << "\t  " << extension.extensionName << std::endl;
 				}
 			}
 			#endif
@@ -1681,11 +1726,11 @@ class HelloTringleApplication
 				}
 				if(in_use)
 				{
-					if(debug_log) std::cout << "* " << layerProperties.layerName << std::endl;
+					if(debug_log) std::cout << "\t* " << layerProperties.layerName << std::endl;
 				}
 				else
 				{
-					if(debug_log) std::cout << "  " << layerProperties.layerName << std::endl;
+					if(debug_log) std::cout << "\t  " << layerProperties.layerName << std::endl;
 				}
 			}
 			#endif
